@@ -1,23 +1,60 @@
-# Scraper Queue Toy Project
+# Web Scraper Toy Project
 
-Django, Celery, Redis를 기반으로 한 비동기 웹 스크래퍼 토이 프로젝트입니다.
+Django + Celery + Redis 기반의 비동기 웹 스크래퍼 토이 프로젝트입니다.
 
-## 기술 스택 및 사용 라이브러리
+## 개발 환경 시작 가이드
 
-- **Django**: 메인 웹 프레임워크. 데이터 모델링 및 관리 UI 제공.
-- **Celery**: 비동기 작업 큐. 대량의 URL 스크래핑 작업을 백그라운드에서 처리.
-- **Redis**: 메시지 브로커 및 결과 백엔드. Django와 Celery 사이의 통신 담당.
-- **django-celery-results**: Celery 작업 결과를 Django DB에 저장하고 조회하기 위한 확장.
-- **Requests**: 웹 페이지 콘텐츠를 가져오기 위한 HTTP 라이브러리.
-- **BeautifulSoup4**: HTML 파싱 및 데이터 추출을 위한 라이브러리.
-- **Flower**: Celery 클러스터를 위한 실시간 모니터링 및 웹 관리 툴.
+### 1. 인프라 실행 (Docker)
+DB(PostgreSQL)와 Message Broker(Redis)를 실행합니다.
+```powershell
+# 컨테이너 실행
+docker compose -f docker-compose.dev.yml up -d
 
-## 설치 및 실행 (예정)
+# 컨테이너 중지
+docker compose -f docker-compose.dev.yml down
+```
 
-1. 가상환경 활성화
-2. 패키지 설치: `pip install -r requirements.txt`
-3. Redis 실행 (Docker 권장)
-4. Django 마이그레이션: `python manage.py migrate`
-5. 서버 실행: `python manage.py runserver`
-6. Celery 워커 실행: `celery -A config worker -l info`
-7. Flower 실행: `celery -A config flower`
+### 2. 백엔드 설정 (Django)
+backend 디렉토리에서 작업을 수행합니다.
+
+```powershell
+cd backend
+
+# 가상환경 활성화 (최초 1회)
+python -m venv venv
+.\venv\Scripts\Activate
+
+# 패키지 설치
+pip install -r requirements.txt
+
+# DB 마이그레이션
+python manage.py makemigrations
+python manage.py migrate
+
+# Django 서버 실행
+python manage.py runserver
+```
+
+### 3. Celery 실행
+비동기 작업을 위해 별도의 터미널에서 실행해야 합니다. (가상환경 활성화 필요)
+
+```powershell
+# Worker 실행 (스크래핑 작업 수행)
+# Windows에서는 --pool=solo 옵션이 필요할 수 있습니다.
+celery -A config worker -l info --pool=solo
+
+# Beat 실행 (스케줄링 작업 관리)
+celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+```
+
+## 기술 스택
+- Backend: Django, DRF, Celery
+- Database: PostgreSQL
+- Broker: Redis
+- Frontend: Node.js (Express)
+
+## 프로젝트 구조
+- backend/: Django 프로젝트 및 스크래핑 로직
+- frontend/: Node.js 기반 프런트엔드 (준비 중)
+- docker-compose.yml: 전체 서비스 운영용
+- docker-compose.dev.yml: 로컬 개발용 인프라 (DB, Redis)
