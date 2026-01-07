@@ -138,7 +138,10 @@ Django + Celery + Redis 기반 백엔드와 Node.js 기반 프론트엔드로 �
 
 ```
 scraper-queue-toy/
-├── docker-compose.yml
+├── docker-compose.yml          # 프로덕션용
+├── docker-compose.dev.yml      # 개발용 (DB, Redis만)
+├── .vscode/
+│   └── launch.json             # 디버깅 설정
 ├── backend/
 │   ├── Dockerfile
 │   ├── requirements.txt
@@ -244,12 +247,140 @@ scraper-queue-toy/
 | DELETE | /api/schedule/{id}/ | 스케줄 삭제 |
 
 ### 7. 실행 방법
+
+#### 프로덕션 (전체 Docker)
 ```bash
 docker-compose up --build
 ```
 - 프론트엔드: http://localhost:3000
 - 백엔드 API: http://localhost:8000
 - Flower (모니터링): http://localhost:5555
+
+#### 개발 환경 (로컬 + Docker 인프라)
+```bash
+# 1. DB, Redis만 Docker로 실행
+docker-compose -f docker-compose.dev.yml up -d
+
+# 2. 백엔드 가상환경 설정
+cd backend
+python -m venv venv
+venv\Scripts\activate  # Windows
+pip install -r requirements.txt
+
+# 3. 마이그레이션
+python manage.py migrate
+
+# 4. VSCode에서 F5로 디버깅 시작
+```
+
+---
+
+## 개발 환경 설정 (VSCode 디버깅)
+
+### docker-compose.dev.yml
+```yaml
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: scraper
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_dev_data:
+```
+
+### .vscode/launch.json
+```json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Django",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/backend/manage.py",
+      "args": ["runserver", "0.0.0.0:8000", "--noreload"],
+      "django": true,
+      "cwd": "${workspaceFolder}/backend",
+      "env": {
+        "DEBUG": "True",
+        "DATABASE_URL": "postgres://postgres:postgres@localhost:5432/scraper",
+        "REDIS_URL": "redis://localhost:6379/0"
+      }
+    },
+    {
+      "name": "Celery Worker",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "celery",
+      "args": ["-A", "config", "worker", "-l", "DEBUG", "--pool=solo"],
+      "cwd": "${workspaceFolder}/backend",
+      "env": {
+        "DEBUG": "True",
+        "DATABASE_URL": "postgres://postgres:postgres@localhost:5432/scraper",
+        "REDIS_URL": "redis://localhost:6379/0"
+      }
+    },
+    {
+      "name": "Celery Beat",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "celery",
+      "args": ["-A", "config", "beat", "-l", "DEBUG", "--scheduler", "django_celery_beat.schedulers:DatabaseScheduler"],
+      "cwd": "${workspaceFolder}/backend",
+      "env": {
+        "DEBUG": "True",
+        "DATABASE_URL": "postgres://postgres:postgres@localhost:5432/scraper",
+        "REDIS_URL": "redis://localhost:6379/0"
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Django + Celery",
+      "configurations": ["Django", "Celery Worker", "Celery Beat"]
+    }
+  ]
+}
+```
+
+### 개발 환경 구성도
+```
+┌─────────────────────────────────────────────────────────┐
+│                    로컬 (VSCode 디버깅)                   │
+│                                                         │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
+│  │   Django    │  │   Celery    │  │   Celery    │     │
+│  │  (F5 실행)  │  │   Worker    │  │    Beat     │     │
+│  │  :8000      │  │  (F5 실행)  │  │  (F5 실행)  │     │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘     │
+│         │                │                │             │
+│         └────────────────┼────────────────┘             │
+│                          │                              │
+└──────────────────────────┼──────────────────────────────┘
+                           │
+┌──────────────────────────┼──────────────────────────────┐
+│                     Docker                              │
+│                          │                              │
+│         ┌────────────────┴────────────────┐             │
+│         ▼                                 ▼             │
+│  ┌─────────────┐                   ┌─────────────┐     │
+│  │ PostgreSQL  │                   │    Redis    │     │
+│  │   :5432     │                   │   :6379     │     │
+│  └─────────────┘                   └─────────────┘     │
+└─────────────────────────────────────────────────────────┘
+```
 
 ---
 
