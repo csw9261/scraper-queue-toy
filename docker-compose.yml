@@ -1,89 +1,57 @@
-version: '3.8'
-
 services:
+  # PostgreSQL — 메인 데이터베이스
+  # ScrapeTask 결과 저장
+  # pgAdmin: http://172.27.242.219:5050
   postgres:
     image: postgres:15
     environment:
       POSTGRES_DB: scraper
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
       retries: 5
 
+  # Redis — Celery 메시지 브로커
+  # Django → Redis → Celery Worker 메시지 전달 통로
+  # RedisInsight: http://172.27.242.219:5540
   redis:
     image: redis:7-alpine
+    ports:
+      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
       retries: 5
 
-  backend:
-    build: ./backend
-    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000
-    volumes:
-      - ./backend:/app
+  # RedisInsight — Redis 웹 GUI
+  redis-insight:
+    image: redis/redisinsight:latest
     ports:
-      - "8000:8000"
-    environment:
-      - DEBUG=False
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/scraper
+      - "5540:5540"
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
 
-  celery-worker:
-    build: ./backend
-    command: celery -A config worker -l info
-    volumes:
-      - ./backend:/app
-    environment:
-      - DEBUG=False
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/scraper
-    depends_on:
-      backend:
-        condition: service_started
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-
-  celery-beat:
-    build: ./backend
-    command: celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
-    volumes:
-      - ./backend:/app
-    environment:
-      - DEBUG=False
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/scraper
-    depends_on:
-      backend:
-        condition: service_started
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-
-  frontend:
-    build: ./frontend
+  # pgAdmin — PostgreSQL 웹 GUI
+  # 접속: admin@admin.com / admin
+  pgadmin:
+    image: dpage/pgadmin4
     ports:
-      - "3000:3000"
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
     depends_on:
-      backend:
-        condition: service_started
+      postgres:
+        condition: service_healthy
 
 volumes:
   postgres_data:

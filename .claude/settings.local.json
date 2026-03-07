@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__notion__API-retrieve-a-page",
+      "mcp__notion__API-patch-block-children",
+      "mcp__notion__API-delete-a-block",
+      "mcp__docker__list-containers",
+      "mcp__docker__get-logs"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "git"
+  ]
+}
