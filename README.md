@@ -1,60 +1,90 @@
-# Web Scraper Toy Project
+# scraper-queue-toy
 
-Django + Celery + Redis 기반의 비동기 웹 스크래퍼 토이 프로젝트입니다.
+Django + Celery + Redis + PostgreSQL 기반의 비동기 웹 스크래퍼 토이 프로젝트.
 
-## 개발 환경 시작 가이드
-
-### 1. 인프라 실행 (Docker)
-DB(PostgreSQL)와 Message Broker(Redis)를 실행합니다.
-```powershell
-# 컨테이너 실행
-docker compose -f docker-compose.dev.yml up -d
-
-# 컨테이너 중지
-docker compose -f docker-compose.dev.yml down
-```
-
-### 2. 백엔드 설정 (Django)
-backend 디렉토리에서 작업을 수행합니다.
-
-```powershell
-cd backend
-
-# 가상환경 활성화 (최초 1회)
-python -m venv venv
-.\venv\Scripts\Activate
-
-# 패키지 설치
-pip install -r requirements.txt
-
-# DB 마이그레이션
-python manage.py makemigrations
-python manage.py migrate
-
-# Django 서버 실행
-python manage.py runserver
-```
-
-### 3. Celery 실행
-비동기 작업을 위해 별도의 터미널에서 실행해야 합니다. (가상환경 활성화 필요)
-
-```powershell
-# Worker 실행 (스크래핑 작업 수행)
-# Windows에서는 --pool=solo 옵션이 필요할 수 있습니다.
-celery -A config worker -l info --pool=solo
-
-# Beat 실행 (스케줄링 작업 관리)
-celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
-```
+URL을 입력하면 Celery Worker가 비동기로 페이지를 스크래핑하고 결과를 DB에 저장한다.
 
 ## 기술 스택
-- Backend: Django, DRF, Celery
+
+- Backend: Django, Django REST Framework, Celery
 - Database: PostgreSQL
 - Broker: Redis
-- Frontend: Node.js (Express)
+- Scraping: requests, BeautifulSoup4
 
-## 프로젝트 구조
-- backend/: Django 프로젝트 및 스크래핑 로직
-- frontend/: Node.js 기반 프런트엔드 (준비 중)
-- docker-compose.yml: 전체 서비스 운영용
-- docker-compose.dev.yml: 로컬 개발용 인프라 (DB, Redis)
+## 로컬 개발 환경
+
+**1. 인프라 실행**
+```bash
+docker compose up -d
+```
+
+**2. 백엔드 설정**
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python manage.py migrate
+```
+
+**3. 서버 실행 (터미널 2개)**
+```bash
+# 터미널 1 - Django
+python manage.py runserver
+
+# 터미널 2 - Celery Worker
+celery -A config worker -l info
+```
+
+## API
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| POST | `/api/tasks/` | URL 제출 → 스크래핑 태스크 생성 |
+| GET | `/api/tasks/` | 전체 태스크 목록 |
+| GET | `/api/tasks/{id}/` | 특정 태스크 상태 및 결과 조회 |
+
+## GUI 툴
+
+| 툴 | URL | 용도 |
+|----|-----|------|
+| pgAdmin | http://localhost:5050 | PostgreSQL 관리 |
+| RedisInsight | http://localhost:5540 | Redis 관리 |
+
+## MCP 설정 (Claude Code)
+
+`.mcp.json`을 프로젝트 루트에 생성하고 아래 서버를 설정한다.
+`.mcp.json`은 토큰 등 민감 정보가 포함되므로 `.gitignore`에 추가해야 한다.
+
+```json
+{
+  "mcpServers": {
+    "git": {
+      "command": "uvx",
+      "args": ["mcp-server-git", "--repository", "/path/to/scraper-queue-toy"]
+    },
+    "postgres": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://DB_USER:DB_PASSWORD@localhost:5432/DB_NAME"]
+    },
+    "docker": {
+      "command": "uvx",
+      "args": ["docker-mcp"]
+    },
+    "notion": {
+      "command": "npx",
+      "args": ["-y", "@notionhq/notion-mcp-server"],
+      "env": {
+        "OPENAPI_MCP_HEADERS": "{\"Authorization\": \"Bearer YOUR_NOTION_TOKEN\", \"Notion-Version\": \"2022-06-28\"}"
+      }
+    }
+  }
+}
+```
+
+| MCP 서버 | 용도 |
+|---------|------|
+| git | 코드 변경사항 조회 (read-only) |
+| postgres | DB 직접 쿼리 |
+| docker | 컨테이너 상태 및 로그 확인 |
+| notion | 개발 계획 및 진행 상황 관리 |
